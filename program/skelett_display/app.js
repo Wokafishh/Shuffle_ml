@@ -10,6 +10,9 @@ const state = {
     lastBeatIdx: -1,
     raf: null,
     origin: null,
+    bpm: 120,
+    firstBeatTime: 0,
+    nextBounceIdx: 0,
 };
 
 setInterval(() => fetch('/ping').catch(() => { }), 2000);
@@ -210,6 +213,9 @@ function loadBeats(d) {
     state.beats = d.beats || [];
     state.melodic = d.melodic_changes || [];
     state.duration = d.duration_s || 0;
+    state.bpm = d.bpm || 120;
+    state.firstBeatTime = state.beats[0]?.time_s ?? 0;
+    state.nextBounceIdx = 0;
 
     document.getElementById('info').innerHTML =
         `BPM: <b>${d.bpm}</b><br>` +
@@ -227,15 +233,14 @@ function loadBeats(d) {
         beatList.appendChild(el);
     });
 
-    // Ball physics
-    const bpm = d.bpm || 120;
+    const bpm = state.bpm;
     const height = 40;
     ballState.T = 60 / bpm;
     ballState.gravity = (8 * height) / (ballState.T * ballState.T);
     ballState.v0 = -(ballState.gravity * ballState.T) / 2;
 
-    // Seed lastImpactTime to beat 0 so the ball starts in the right phase
-    ballState.lastImpactTime = state.beats[0]?.time_s ?? 0;
+    ballState.lastImpactTime = state.firstBeatTime;
+    state.nextBounceIdx = 0;
 
     drawTimeline();
 }
@@ -261,7 +266,7 @@ function getFrame(t) {
 
     if (i0 === i1 || f1.time_s === f0.time_s) return f0;
 
-    const alpha = 0.99;
+    const alpha = 0.96;
 
     function lerpKps(kps0, kps1, a) {
         const kps = {};
@@ -535,29 +540,31 @@ function drawBouncingBall() {
 // Instead of a proximity window, find the index of the most recent beat
 // that has passed and fire if it's new. This never misses or double-fires,
 // and handles seeking in both directions cleanly.
-function checkBeat(t) {
-    if (!state.showBeats || !state.beats.length) return;
+function checkBounce(t) {
+    if (!state.showBeats || !state.bpm || state.firstBeatTime == null) return;
+    if (t < state.firstBeatTime) return;
 
-    // Binary search: largest index whose time_s <= t
-    let lo = 0, hi = state.beats.length - 1, found = -1;
-    while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (state.beats[mid].time_s <= t) { found = mid; lo = mid + 1; }
-        else hi = mid - 1;
+    const period = 60 / state.bpm;
+    const idx = Math.floor((t - state.firstBeatTime) / period);
+
+    if (idx === state.nextBounceIdx) return;
+    if (idx < 0) return;
+
+    state.nextBounceIdx = idx;
+    const bounceTime = state.firstBeatTime + idx * period;
+    ballState.lastImpactTime = bounceTime;
+    ballState.particles = [];
+
+    for (let i = 0; i < 6; i++) {
+        const side = i % 2 === 0 ? -1 : 1;
+        ballState.particles.push({
+            x: ballState.posX,
+            y: ballState.floorY,
+            vx: side * (Math.random() * 1.5 + 0.5),
+            vy: -(Math.random() * 1.2 + 0.3),
+            life: 1.0,
+        });
     }
-
-    if (found === state.lastBeatIdx) return; // nothing new
-
-    const beat = state.beats[found];
-    state.lastBeatIdx = found;
-
-    if (found < 0) return;
-
-    triggerFlash(beat);
-
-    document.querySelector('#beat-list .active')?.classList.remove('active');
-    const el = beatList.querySelector(`[data-idx="${found}"]`);
-    if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
 }
 
 // ── Render loop ───────────────────────────────────────────────
@@ -573,7 +580,7 @@ function loop() {
         ctx.clearRect(0, 0, vr.width, vr.height);
     }
 
-    checkBeat(t);        // update lastImpactTime before drawing
+    checkBounce(t);
     drawBouncingBall();
     drawFrame(t);
     updatePlayhead();
@@ -603,18 +610,25 @@ video.addEventListener('seeking', () => {
 });
 
 video.addEventListener('seeked', () => {
-    beatFlash.alpha = 0;
-    // Re-sync lastBeatIdx to wherever we seeked, so checkBeat fires correctly
-    // on the very first frame after the seek without replaying old beats
-    const t = video.currentTime;
-    let lo = 0, hi = state.beats.length - 1, found = -1;
-    while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (state.beats[mid].time_s <= t) { found = mid; lo = mid + 1; }
-        else hi = mid - 1;
+    ballState.wallLastFrame = 0;
+
+    if (!state.bpm || state.firstBeatTime == null) {
+        redraw();
+        return;
     }
-    state.lastBeatIdx = found;
-    if (found >= 0) ballState.lastImpactTime = state.beats[found].time_s;
+
+    const t = video.currentTime;
+    const period = 60 / state.bpm;
+
+    if (t < state.firstBeatTime) {
+        state.nextBounceIdx = 0;
+        ballState.lastImpactTime = state.firstBeatTime;
+    } else {
+        const idx = Math.floor((t - state.firstBeatTime) / period);
+        state.nextBounceIdx = idx;
+        ballState.lastImpactTime = state.firstBeatTime + idx * period;
+    }
+
     redraw();
 });
 

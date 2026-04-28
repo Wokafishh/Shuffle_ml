@@ -378,22 +378,22 @@ def variabel_analys(
     # data/ ligger tre nivåer upp från filen (program/extrahera_data/variabel_analys.py)
     _data_dir = Path(__file__).parent.parent.parent / "data"
 
-    for video_path in videos:
-        vp = Path(video_path)
-        base_name = namn if namn else vp.stem
+    for video_path_str in videos:
+        video_path_Path = Path(video_path_str)
+        base_name = namn if namn else video_path_Path.stem
 
         skel_path = _data_dir / "skelett_out" / f"{base_name}{skeleton_suffix}"
         beat_path = _data_dir / "beats_out"   / f"{base_name}{beats_suffix}"
 
 
-        print(f"Video : {vp.name}")
+        print(f"Video : {video_path_Path.name}")
         print(f"Skelett: {'Found' if skel_path else 'Missing'}")
         print(f"Beats  : {'Found' if beat_path else 'Missing'}")
 
         # Ladda skelettdata
         if not skel_path.exists():
             print(f"  [!] Hittade inte skelettfil: {skel_path}")
-            all_results[str(vp)] = {"error": f"skelettfil saknas: {skel_path}"}
+            all_results[str(video_path_Path)] = {"error": f"skelettfil saknas: {skel_path}"}
             continue
 
         skel_data = _load_json(skel_path)
@@ -425,7 +425,7 @@ def variabel_analys(
         results["symmetry"] = _symmetry_score(frames)
         results["origin"] = _origin_point(frames)
 
-        all_results[str(vp)] = results
+        all_results[str(video_path_Path)] = results
 
     # ── Aggregerat summary ──
     summary = _aggregate_summary(all_results)
@@ -444,41 +444,99 @@ def _print_result(d: dict) -> None:
 
 
 def _aggregate_summary(results: dict) -> dict:
-    """Aggregerar nyckeltal över alla videos."""
-    timing_offsets, coverages, sync_rs, bounce_ratios, sym_arms, sym_legs = [], [], [], [], [], []
+    """Aggregerar samma variabler som analyserats, utan nya påhittade namn."""
+    beat_timing = {
+        "mean_offset_ms": [],
+        "std_offset_ms": [],
+        "hit_rate_pct": [],
+        "n_landings": [],
+    }
+    spatial_coverage = {
+        "coverage_pct": [],
+        "travel_px": [],
+        "hip_x_range_px": [],
+        "hip_y_range_px": [],
+    }
+    arm_hip_sync = {
+        "pearson_r": [],
+        "n_frames": [],
+    }
+    vertical_bounce = {
+        "bounce_bpm": [],
+        "music_bpm": [],
+        "bpm_match_ratio": [],
+    }
+    symmetry = {
+        "symmetry_arms": [],
+        "symmetry_legs": [],
+    }
+    origin = {
+        "origin_px": [],
+        "origin_py": [],
+    }
+
+    def add(dst: dict, src: dict):
+        for key in dst.keys():
+            val = src.get(key)
+            if val is not None:
+                dst[key].append(val)
+
+    analyzed = 0
 
     for key, res in results.items():
         if key == "summary" or "error" in res:
             continue
-        bt = res.get("beat_timing", {})
-        if bt.get("mean_offset_ms") is not None:
-            timing_offsets.append(bt["mean_offset_ms"])
-        sc = res.get("spatial_coverage", {})
-        if sc.get("coverage_pct") is not None:
-            coverages.append(sc["coverage_pct"])
-        ah = res.get("arm_hip_sync", {})
-        if ah.get("pearson_r") is not None:
-            sync_rs.append(ah["pearson_r"])
-        vb = res.get("vertical_bounce", {})
-        if vb.get("bpm_match_ratio") is not None:
-            bounce_ratios.append(vb["bpm_match_ratio"])
-        sy = res.get("symmetry", {})
-        if sy.get("symmetry_arms") is not None:
-            sym_arms.append(sy["symmetry_arms"])
-        if sy.get("symmetry_legs") is not None:
-            sym_legs.append(sy["symmetry_legs"])
 
-    def _avg(lst):
+        bt = res.get("beat_timing", {})
+        sc = res.get("spatial_coverage", {})
+        ah = res.get("arm_hip_sync", {})
+        vb = res.get("vertical_bounce", {})
+        sy = res.get("symmetry", {})
+        org = res.get("origin", {})
+
+        add(beat_timing, bt)
+        add(spatial_coverage, sc)
+        add(arm_hip_sync, ah)
+        add(vertical_bounce, vb)
+        add(symmetry, sy)
+        add(origin, org)
+
+        analyzed += 1
+
+    def avg(lst):
         return round(statistics.mean(lst), 3) if lst else None
 
     return {
-        "avg_beat_offset_ms":   _avg(timing_offsets),
-        "avg_coverage_pct":     _avg(coverages),
-        "avg_arm_hip_sync_r":   _avg(sync_rs),
-        "avg_bounce_match":     _avg(bounce_ratios),
-        "avg_symmetry_arms":    _avg(sym_arms),
-        "avg_symmetry_legs":    _avg(sym_legs),
-        "n_videos":             len(timing_offsets),
+        "beat_timing": {
+            "mean_offset_ms": avg(beat_timing["mean_offset_ms"]),
+            "std_offset_ms": avg(beat_timing["std_offset_ms"]),
+            "hit_rate_pct": avg(beat_timing["hit_rate_pct"]),
+            "n_landings": sum(beat_timing["n_landings"]) if beat_timing["n_landings"] else None,
+        },
+        "spatial_coverage": {
+            "coverage_pct": avg(spatial_coverage["coverage_pct"]),
+            "travel_px": avg(spatial_coverage["travel_px"]),
+            "hip_x_range_px": avg(spatial_coverage["hip_x_range_px"]),
+            "hip_y_range_px": avg(spatial_coverage["hip_y_range_px"]),
+        },
+        "arm_hip_sync": {
+            "pearson_r": avg(arm_hip_sync["pearson_r"]),
+            "n_frames": sum(arm_hip_sync["n_frames"]) if arm_hip_sync["n_frames"] else None,
+        },
+        "vertical_bounce": {
+            "bounce_bpm": avg(vertical_bounce["bounce_bpm"]),
+            "music_bpm": avg(vertical_bounce["music_bpm"]),
+            "bpm_match_ratio": avg(vertical_bounce["bpm_match_ratio"]),
+        },
+        "symmetry": {
+            "symmetry_arms": avg(symmetry["symmetry_arms"]),
+            "symmetry_legs": avg(symmetry["symmetry_legs"]),
+        },
+        "origin": {
+            "origin_px": avg(origin["origin_px"]),
+            "origin_py": avg(origin["origin_py"]),
+        },
+        "n_videos": analyzed,
     }
 
 

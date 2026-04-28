@@ -97,8 +97,6 @@ def main():
         f"http://localhost:{port}/program/skelett_display/index.html"
         f"?name={urllib.parse.quote(name)}"
     )
-    print(f"Serving '{name}' at: {url}")
-    print("Close the browser tab to stop the server.\n")
     webbrowser.open(url)
 
     shutdown_event.wait()
