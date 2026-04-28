@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Motion Viewer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+    * { scrollbar-width: thin; scrollbar-color: #333 #111; }
+
+    html, body {
+      margin: 0; height: 100%; overflow: hidden;
+      background: #111; color: #eee; font-family: monospace;
+    }
+
+    body { display: flex; flex-direction: column; }
+
+    /* ── Top bar ── */
+    #top {
+      display: flex; gap: 10px; padding: 5px 10px;
+      background: #1a1a1a; border-bottom: 1px solid #333;
+      align-items: center; font-size: 12px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    #top span { color: #888; }
+    button {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      color: #eee;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: bold;
+      padding: 6px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      transition: all 0.1s;
+    }
+
+    button:hover {
+      background: #3a3a3a;
+      border-color: #666;
+    }
+
+    button:active {
+      background: #1a1a1a;
+      transform: translateY(1px);
+    }
+    label { color: #aaa; cursor: pointer; }
+
+    /* ── Debug dropdown ── */
+    #debug-wrap { margin-left: auto; position: relative; }
+    #debug-wrap summary {
+      cursor: pointer; color: #555; font-size: 11px;
+      padding: 3px 8px; border: 1px solid #2a2a2a;
+      border-radius: 2px; list-style: none; user-select: none;
+    }
+    #debug-wrap summary:hover { color: #888; border-color: #444; }
+    #debug-wrap[open] summary { color: #4af; border-color: #4af; }
+    #debug-box {
+      position: absolute; right: 0; top: calc(100% + 4px);
+      width: 420px; max-height: 340px; overflow-y: auto;
+      background: #0e0e0e; border: 1px solid #333;
+      padding: 10px; z-index: 100;
+      font-size: 10px; color: #6af; line-height: 1.6;
+      white-space: pre-wrap; word-break: break-all;
+    }
+
+    /* ── Main area ── */
+    #main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+
+    /* ── Video area ── */
+    #viewer {
+      position: relative; flex: 1; background: #000;
+      display: flex; align-items: center; justify-content: center;
+      min-width: 0; overflow: hidden;
+    }
+    video { max-width: 100%; max-height: 100%; display: block; }
+    canvas#overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 290px; min-width: 290px;
+      background: #1a1a1a; border-left: 1px solid #333;
+      display: flex; flex-direction: column;
+      overflow: hidden; font-size: 12px;
+    }
+
+    #info { padding: 10px; border-bottom: 1px solid #333; line-height: 2; color: #aaa; flex-shrink: 0; }
+    #info b { color: #eee; }
+
+    /* Tab switcher */
+    #sidebar-tabs { display: flex; border-bottom: 1px solid #333; flex-shrink: 0; }
+    .tab-btn {
+      flex: 1; padding: 5px 0; background: none; border: none;
+      border-bottom: 2px solid transparent;
+      color: #666; font-family: monospace; font-size: 11px; cursor: pointer;
+    }
+    .tab-btn.active { color: #4af; border-bottom-color: #4af; }
+
+    .tab-panel { display: none; flex: 1; overflow-y: auto; }
+    .tab-panel.active { display: block; }
+
+    /* Beat list */
+    #beat-list div { padding: 3px 10px; cursor: pointer; border-left: 3px solid transparent; }
+    #beat-list div:hover { background: #222; }
+    #beat-list div.active { border-left-color: #4af; background: #1e2530; }
+    #beat-list div.strong { color: #ffe; }
+
+    /* Variables panel */
+    #var-panel { padding: 0; }
+    .var-section { border-bottom: 1px solid #2a2a2a; }
+    .var-section-title {
+      padding: 6px 10px 4px; font-size: 10px;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: #4af; background: #161616;
+    }
+    .var-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 10px; border-bottom: 1px solid #1e1e1e;
+    }
+    .var-row:last-child { border-bottom: none; }
+    .var-name { color: #888; font-size: 11px; }
+    .var-value { color: #eee; font-size: 11px; font-weight: bold; }
+    .var-value.good { color: #4f8; }
+    .var-value.warn { color: #fa4; }
+    .var-value.bad  { color: #f44; }
+    .var-bar-wrap { width: 100%; padding: 2px 10px 6px; }
+    .var-bar-bg { background: #222; border-radius: 2px; height: 4px; width: 100%; }
+    .var-bar-fill { height: 4px; border-radius: 2px; background: #4af; transition: width 0.3s; }
+    #var-loading { padding: 16px 10px; color: #555; font-size: 11px; }
+    #var-error   { padding: 16px 10px; color: #f44; font-size: 11px; }
+
+    /* ── Timeline ── */
+    #timeline {
+      position: absolute;
+      bottom: 20px;   /* Avstånd från botten */
+      left: 20px;     /* Avstånd från vänster */
+      right: 20px;    /* Avstånd från höger */
+      height: 44px;
+      background: rgba(20, 20, 20, 0.85); /* Halvgenomskinlig */
+      backdrop-filter: blur(5px);         /* Suddig bakgrund bakom baren */
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      cursor: pointer;
+      overflow: hidden;
+      z-index: 10;
+    }
+    canvas#tl { display: block; width: 100%; height: 100%; }
+    #playhead {
+      position: absolute; top: 0; bottom: 0; width: 1px;
+      background: #f44; pointer-events: none;
+      transform: translateX(-50%);
+    }
+  </style>
+</head>
+<body>
+
+<div id="top">
+  <strong id="title">—</strong>
+  <span id="time">0.00 / 0.00</span>
+  <button onclick="togglePlay()">⏯ space</button>
+  <button onclick="toggleSkeleton()">skeleton [s]</button>
+  <label><input type="checkbox" id="chk-beats" checked onchange="state.showBeats=this.checked"> beats</label>
+
+  <details id="debug-wrap">
+    <summary>debug ▾</summary>
+    <div id="debug-box">No data yet.</div>
+  </details>
+</div>
+
+<div id="main">
+  <div id="viewer">
+    <video id="video" preload="auto"></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="timeline">
+      <canvas id="tl"></canvas>
+      <div id="playhead"></div>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div id="info">Loading...</div>
+
+    <div id="sidebar-tabs">
+      <button class="tab-btn" onclick="switchTab('beats')">Beats</button>
+      <button class="tab-btn active" onclick="switchTab('vars')">Variabler</button>
+    </div>
+
+    <div id="tab-beats" class="tab-panel">
+      <div id="beat-list"></div>
+    </div>
+
+    <div id="tab-vars" class="tab-panel active">
+      <div id="var-panel">
+        <div id="var-loading">Laddar variabler…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script src="app.js"></script>
+</body>
+</html>
