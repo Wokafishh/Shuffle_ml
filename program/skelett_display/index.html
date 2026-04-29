@@ -6,7 +6,6 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
 
-    /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: #111; }
     ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
@@ -17,7 +16,6 @@
       margin: 0; height: 100%; overflow: hidden;
       background: #111; color: #eee; font-family: monospace;
     }
-
     body { display: flex; flex-direction: column; }
 
     /* ── Top bar ── */
@@ -25,34 +23,17 @@
       display: flex; gap: 10px; padding: 5px 10px;
       background: #1a1a1a; border-bottom: 1px solid #333;
       align-items: center; font-size: 12px;
-      flex-shrink: 0;
-      flex-wrap: wrap;
+      flex-shrink: 0; flex-wrap: wrap;
     }
     #top span { color: #888; }
     button {
-      background: #2a2a2a;
-      border: 1px solid #444;
-      color: #eee;
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: bold;
-      padding: 6px 12px;
-      cursor: pointer;
-      border-radius: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      transition: all 0.1s;
+      background: #2a2a2a; border: 1px solid #444; color: #eee;
+      font-family: inherit; font-size: 11px; font-weight: bold;
+      padding: 6px 12px; cursor: pointer; border-radius: 4px;
+      text-transform: uppercase; letter-spacing: 0.03em; transition: all 0.1s;
     }
-
-    button:hover {
-      background: #3a3a3a;
-      border-color: #666;
-    }
-
-    button:active {
-      background: #1a1a1a;
-      transform: translateY(1px);
-    }
+    button:hover  { background: #3a3a3a; border-color: #666; }
+    button:active { background: #1a1a1a; transform: translateY(1px); }
     label { color: #aaa; cursor: pointer; }
 
     /* ── Debug dropdown ── */
@@ -92,11 +73,9 @@
       display: flex; flex-direction: column;
       overflow: hidden; font-size: 12px;
     }
-
     #info { padding: 10px; border-bottom: 1px solid #333; line-height: 2; color: #aaa; flex-shrink: 0; }
     #info b { color: #eee; }
 
-    /* Tab switcher */
     #sidebar-tabs { display: flex; border-bottom: 1px solid #333; flex-shrink: 0; }
     .tab-btn {
       flex: 1; padding: 5px 0; background: none; border: none;
@@ -104,17 +83,15 @@
       color: #666; font-family: monospace; font-size: 11px; cursor: pointer;
     }
     .tab-btn.active { color: #4af; border-bottom-color: #4af; }
-
     .tab-panel { display: none; flex: 1; overflow-y: auto; }
     .tab-panel.active { display: block; }
 
-    /* Beat list */
     #beat-list div { padding: 3px 10px; cursor: pointer; border-left: 3px solid transparent; }
     #beat-list div:hover { background: #222; }
     #beat-list div.active { border-left-color: #4af; background: #1e2530; }
     #beat-list div.strong { color: #ffe; }
 
-    /* Variables panel */
+    /* ── Variables panel ── */
     #var-panel { padding: 0; }
     .var-section { border-bottom: 1px solid #2a2a2a; }
     .var-section-title {
@@ -127,37 +104,28 @@
       padding: 4px 10px; border-bottom: 1px solid #1e1e1e;
     }
     .var-row:last-child { border-bottom: none; }
-    .var-name { color: #888; font-size: 11px; }
+    .var-name  { color: #888; font-size: 11px; }
     .var-value { color: #eee; font-size: 11px; font-weight: bold; }
     .var-value.good { color: #4f8; }
     .var-value.warn { color: #fa4; }
     .var-value.bad  { color: #f44; }
     .var-bar-wrap { width: 100%; padding: 2px 10px 6px; }
-    .var-bar-bg { background: #222; border-radius: 2px; height: 4px; width: 100%; }
+    .var-bar-bg   { background: #222; border-radius: 2px; height: 4px; width: 100%; }
     .var-bar-fill { height: 4px; border-radius: 2px; background: #4af; transition: width 0.3s; }
-    #var-loading { padding: 16px 10px; color: #555; font-size: 11px; }
-    #var-error   { padding: 16px 10px; color: #f44; font-size: 11px; }
+    #var-loading  { padding: 16px 10px; color: #555; font-size: 11px; }
+    #var-error    { padding: 16px 10px; color: #f44; font-size: 11px; }
 
     /* ── Timeline ── */
     #timeline {
-      position: absolute;
-      bottom: 20px;   /* Avstånd från botten */
-      left: 20px;     /* Avstånd från vänster */
-      right: 20px;    /* Avstånd från höger */
-      height: 44px;
-      background: rgba(20, 20, 20, 0.85); /* Halvgenomskinlig */
-      backdrop-filter: blur(5px);         /* Suddig bakgrund bakom baren */
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      cursor: pointer;
-      overflow: hidden;
-      z-index: 10;
+      position: absolute; bottom: 20px; left: 20px; right: 20px; height: 44px;
+      background: rgba(20,20,20,0.85); backdrop-filter: blur(5px);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+      cursor: pointer; overflow: hidden; z-index: 10;
     }
     canvas#tl { display: block; width: 100%; height: 100%; }
     #playhead {
       position: absolute; top: 0; bottom: 0; width: 1px;
-      background: #f44; pointer-events: none;
-      transform: translateX(-50%);
+      background: #f44; pointer-events: none; transform: translateX(-50%);
     }
   </style>
 </head>
@@ -207,7 +175,14 @@
   </div>
 </div>
 
+<!-- ES module entry point -->
+<script type="module" src="main.js"></script>
 
-<script src="app.js"></script>
+<!-- Expose state to inline onclick handlers (chk-beats checkbox) -->
+<script type="module">
+  import { state } from './state.js';
+  window.state = state;
+</script>
+
 </body>
 </html>

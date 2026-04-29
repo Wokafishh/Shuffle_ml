@@ -1,5 +1,4 @@
 """
-mocap_mediapipe.py
 ──────────────────
 Multi-person skelett-extraktion för dansvideor.
 Sparar bara relevanta landmärken: huvud, axlar, armar, händer, höfter, ben, fötter.
@@ -119,6 +118,8 @@ def _is_valid_pose(person: dict) -> bool:
     """
     Kastar bort hela detektionen om grundläggande anatomi är bruten.
     Kontrollerar bara punkter med tillräcklig visibility (≥0.3).
+    Trösklarna är generösa för att klara dansposes: crouching, splits,
+    backflips, djup squat, floor-work, kraftig framåtlutning.
     """
     kps = person["kps"]
 
@@ -132,56 +133,90 @@ def _is_valid_pose(person: dict) -> bool:
     la, ra = get("left_ankle"),      get("right_ankle")
     nose   = get("nose")
 
-    # Axlar ovanför höfter
-    if ls and lh and ls["py"] > lh["py"] + 40:
+    # Axlar ovanför höfter — tillåt extrem böjning/hopp (t.ex. backflip-posen)
+    if ls and lh and ls["py"] > lh["py"] + 250:
         return False
-    if rs and rh and rs["py"] > rh["py"] + 40:
-        return False
-
-    # Höfter ovanför knän
-    if lh and lk and lh["py"] > lk["py"] + 25:
-        return False
-    if rh and rk and rh["py"] > rk["py"] + 25:
+    if rs and rh and rs["py"] > rh["py"] + 250:
         return False
 
-    # Knän ovanför anklar
-    if lk and la and lk["py"] > la["py"] + 25:
+    # Höfter ovanför knän — tillåt djup squat/splits
+    if lh and lk and lh["py"] > lk["py"] + 200:
         return False
-    if rk and ra and rk["py"] > ra["py"] + 25:
+    if rh and rk and rh["py"] > rk["py"] + 200:
         return False
 
-    # Näsa ovanför axlar
+    # Knän ovanför anklar — tillåt knäböj och sparkar
+    if lk and la and lk["py"] > la["py"] + 200:
+        return False
+    if rk and ra and rk["py"] > ra["py"] + 200:
+        return False
+
+    # Näsa ovanför axlar — tillåt kraftig framåtlutning
     if nose and ls and rs:
         shoulder_y = (ls["py"] + rs["py"]) / 2
-        if nose["py"] > shoulder_y + 50:
+        if nose["py"] > shoulder_y + 300:
             return False
 
-    # Vänster/höger inte kraftigt spegelvända
-    if ls and rs and ls["px"] > rs["px"] + 140:
-        return False
-    if lh and rh and lh["px"] > rh["px"] + 120:
-        return False
-
-    # Överarm/underarm-proportioner (inte mer än 3× skillnad)
+    # Överarm/underarm-proportioner — utsträckta armar i 2D-projektion
+    # kan se konstiga ut, tillåt upp till 5× skillnad
     lel = get("left_elbow");  lwr = get("left_wrist")
     rel = get("right_elbow"); rwr = get("right_wrist")
     if ls and lel and lwr:
         u, l = _dist(ls, lel), _dist(lel, lwr)
-        if u > 0 and l > 0 and (u / l > 3.0 or l / u > 3.0):
+        if u > 0 and l > 0 and (u / l > 5.0 or l / u > 5.0):
             return False
     if rs and rel and rwr:
         u, l = _dist(rs, rel), _dist(rel, rwr)
-        if u > 0 and l > 0 and (u / l > 3.0 or l / u > 3.0):
+        if u > 0 and l > 0 and (u / l > 5.0 or l / u > 5.0):
             return False
 
-    # Bounding-box-aspekt (inte ett horisontellt streck)
+    # Bounding-box-aspekt — tillåt horisontella poser (golvet) och
+    # smala croppade frames
     bbox = person.get("bbox", {})
     w = bbox.get("x_max", 0) - bbox.get("x_min", 0)
     h = bbox.get("y_max", 0) - bbox.get("y_min", 0)
-    if h > 0 and (w / h < 0.08 or w / h > 3.5):
+    if h > 0 and (w / h < 0.04 or w / h > 6.0):
         return False
 
     return True
+
+
+def _is_camera_motion(current: dict, previous: Optional[dict], threshold: float = 0.75) -> bool:
+    """
+    Returns True if it looks like the camera moved rather than the person.
+    Heuristic: if >75% of visible keypoints all move in the same direction
+    by more than 30px, it's probably camera shake, not body motion.
+    """
+    if previous is None:
+        return False
+
+    curr_kps = current["kps"]
+    prev_kps = previous["kps"]
+
+    deltas = []
+    for name in curr_kps:
+        kc, kp = curr_kps[name], prev_kps.get(name)
+        if not kp or kc.get("v", 0) < 0.3 or kp.get("v", 0) < 0.3:
+            continue
+        dx = kc["px"] - kp["px"]
+        dy = kc["py"] - kp["py"]
+        if math.hypot(dx, dy) > 30:
+            deltas.append((dx, dy))
+
+    if len(deltas) < 6:  # not enough visible points to judge
+        return False
+
+    # Check if all deltas point in roughly the same direction
+    avg_dx = sum(d[0] for d in deltas) / len(deltas)
+    avg_dy = sum(d[1] for d in deltas) / len(deltas)
+
+    # Count how many agree with the average direction (dot product > 0)
+    agreeing = sum(
+        1 for dx, dy in deltas
+        if (dx * avg_dx + dy * avg_dy) > 0
+    )
+
+    return (agreeing / len(deltas)) >= threshold
 
 
 # ── Temporal hastighetsbegränsning ─────────────────────────────────────────────
@@ -251,14 +286,14 @@ def _match_person(person: dict, prev_persons: list[dict]) -> Optional[dict]:
 # ── Hjälpfunktioner för modell ─────────────────────────────────────────────────
 
 def _ensure_model(model_dir: Path) -> Path:
-    model_path = model_dir / "pose_landmarker_full.task"
+    model_path = model_dir / "pose_landmarker_heavy.task"
     if not model_path.exists():
         import urllib.request
         model_dir.mkdir(parents=True, exist_ok=True)
         url = (
             "https://storage.googleapis.com/mediapipe-models/"
             "pose_landmarker/pose_landmarker_full/float16/latest/"
-            "pose_landmarker_full.task"
+            "pose_landmarker_heavy.task"
         )
         console.print(f"  [dim]Laddar ner modell → {model_path.name} …[/]")
         urllib.request.urlretrieve(url, model_path)
@@ -271,9 +306,9 @@ def _make_landmarker(num_poses: int, model_path: Path):
         base_options=mp_python.BaseOptions(model_asset_path=str(model_path)),
         running_mode=RunningMode.VIDEO,
         num_poses=num_poses,
-        min_pose_detection_confidence=0.3,
-        min_pose_presence_confidence=0.3,
-        min_tracking_confidence=0.3,
+        min_pose_detection_confidence=0.2,
+        min_pose_presence_confidence=0.2,
+        min_tracking_confidence=0.2,
         output_segmentation_masks=False,
     )
     return mp_vision.PoseLandmarker.create_from_options(opts)
@@ -284,7 +319,7 @@ def _make_landmarker(num_poses: int, model_path: Path):
 def analysera_skelett(
     video_path:       Path,
     output_dir:       Path,
-    num_poses:        int  = 6,
+    num_poses:        int  = 1,
     skip_frames:      int  = 1,
     model_dir:        Path = None,
     save_debug_video: bool = False,
@@ -354,7 +389,6 @@ def analysera_skelett(
                     mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), time_ms
                 )
 
-                # ── Bygg & validera ────────────────────────────────────────
                 persons = []
                 for lms in (result.pose_landmarks or []):
                     candidate = _build_person(lms, width, height)
@@ -366,6 +400,12 @@ def analysera_skelett(
 
                     # Lager 2: temporal hastighetsbegränsning
                     prev = _match_person(candidate, prev_persons)
+
+                    # Camera motion check — suppress entire frame if camera is shaking
+                    if prev and _is_camera_motion(candidate, prev):
+                        n_anatomy_rejected += 1
+                        continue
+
                     filtered = _apply_velocity_filter(candidate, prev, speed_scale)
 
                     # Räkna nollade punkter
