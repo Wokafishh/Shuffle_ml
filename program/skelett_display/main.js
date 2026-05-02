@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { drawFrame } from './skeleton.js';
-import { ballState, initBall, checkBounce, syncBallToTime, drawBouncingBall } from './ball.js';
+import { ballState, initBall, checkBounce, syncBallToTime, drawBouncingBall, freezeBall, thawBall  } from './ball.js';
 import { drawTimeline, updatePlayhead, initTimelineClick } from './timeline.js';
 import { loadVariables } from './variables.js';
 
@@ -30,6 +30,7 @@ function loadBeats(d) {
     state.melodic   = d.melodic_changes || [];
     state.duration  = d.duration_s || 0;
     state.bpm       = d.bpm || 120;
+    state.drops     = d.drops || [];           
     state.firstBeatTime = state.beats[0]?.time_s ?? 0;
     state.nextBounceIdx = 0;
 
@@ -116,10 +117,21 @@ video.addEventListener('timeupdate', () => {
     if (video.paused) redraw();
 });
 
+video.addEventListener('pause', () => {
+    freezeBall();
+    cancelAnimationFrame(state.raf);
+    state.raf = null;
+    redraw();
+});
+
+video.addEventListener('play', () => {
+    thawBall();
+    startLoop();
+});
+
 // ── Controls ──────────────────────────────────────────────────
 window.togglePlay = function() {
     video.paused ? video.play() : video.pause();
-    startLoop();
 };
 
 window.toggleSkeleton = function() {

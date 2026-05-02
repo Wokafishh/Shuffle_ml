@@ -42,6 +42,24 @@ export function drawTimeline(video) {
         const h = b.is_strong ? H * 0.7 : H * 0.35;
         tlCtx.fillRect(x, (H - h) / 2, 1.5, h);
     });
+    
+    (state.drops || []).forEach(drop => {
+    const x = (drop.time_s / dur) * W;
+
+    // Bright vertical line full height
+    tlCtx.strokeStyle = 'rgba(255, 60, 60, 0.9)';
+    tlCtx.lineWidth = 2;
+    tlCtx.setLineDash([]);
+    tlCtx.beginPath();
+    tlCtx.moveTo(x, 0);
+    tlCtx.lineTo(x, H);
+    tlCtx.stroke();
+
+    // Label
+    tlCtx.fillStyle = 'rgba(255, 60, 60, 0.9)';
+    tlCtx.font = 'bold 9px monospace';
+    tlCtx.fillText('DROP', x + 3, 9);
+});
 }
 
 export function updatePlayhead(video) {

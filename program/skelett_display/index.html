@@ -137,6 +137,12 @@
   <button onclick="togglePlay()">⏯ space</button>
   <button onclick="toggleSkeleton()">skeleton [s]</button>
   <label><input type="checkbox" id="chk-beats" checked onchange="state.showBeats=this.checked"> beats</label>
+  <label style="display:flex;align-items:center;gap:6px;">
+    <span>vol</span>
+    <input type="range" id="vol-slider" min="0" max="100" step="1"
+          style="width:80px;" oninput="setVolume(this.value)">
+    <span id="vol-label" style="min-width:28px;color:#888;">50%</span>
+  </label>
 
   <details id="debug-wrap">
     <summary>debug ▾</summary>
@@ -182,6 +188,30 @@
 <script type="module">
   import { state } from './state.js';
   window.state = state;
+</script>
+<script>
+  const VOL_KEY = 'motionviewer_volume';
+
+  function setVolume(v) {
+    const vol = Number(v);
+    const video = document.getElementById('video');
+    if (video) video.volume = vol / 100;
+    document.getElementById('vol-label').textContent = vol + '%';
+    localStorage.setItem(VOL_KEY, vol);
+  }
+
+  (function initVolume() {
+    const saved = localStorage.getItem(VOL_KEY);
+    const v = saved !== null ? Number(saved) : 50;   // default 50
+    const slider = document.getElementById('vol-slider');
+    slider.value = v;
+    // Video may not exist yet — apply once it's ready
+    const video = document.getElementById('video');
+    const apply = () => { video.volume = v / 100; };
+    if (video.readyState >= 1) apply();
+    else video.addEventListener('loadedmetadata', apply, { once: true });
+    document.getElementById('vol-label').textContent = v + '%';
+  })();
 </script>
 
 </body>

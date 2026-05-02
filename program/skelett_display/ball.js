@@ -10,6 +10,8 @@ export const ballState = {
     particles: [],
     wallLastFrame: 0,
     lastImpactTime: 0,
+    lastImpactWallMs: 0,
+    frozenElapsed: 0,
     _triggerParticles: false,
 };
 
@@ -34,27 +36,43 @@ function spawnParticles(px, py) {
     }
 }
 
+// checkBounce — record wall time when impact fires
 export function checkBounce(t) {
     if (!state.showBeats || !state.bpm || state.firstBeatTime == null) return;
     const period = 60 / state.bpm;
     const idx = Math.floor((t - state.firstBeatTime) / period);
     if (idx === state.nextBounceIdx || idx < 0) return;
     state.nextBounceIdx = idx;
-    ballState.lastImpactTime = state.firstBeatTime + idx * period;
+    ballState.lastImpactTime    = state.firstBeatTime + idx * period;
+    ballState.lastImpactWallMs  = performance.now();          // ← ADD
     ballState._triggerParticles = true;
 }
 
+// syncBallToTime — same thing on seek
 export function syncBallToTime(t) {
     if (!state.bpm || state.firstBeatTime == null) return;
     const period = 60 / state.bpm;
     const idx = t < state.firstBeatTime ? 0 : Math.floor((t - state.firstBeatTime) / period);
-    state.nextBounceIdx = idx;
-    ballState.lastImpactTime = state.firstBeatTime + idx * period;
-    ballState.wallLastFrame = 0;
+    state.nextBounceIdx         = idx;
+    ballState.lastImpactTime    = state.firstBeatTime + idx 
+    * period;
+    ballState.lastImpactWallMs  = performance.now();          // ← ADD
+    ballState.wallLastFrame     = 0;
+}
+
+export function freezeBall() {
+    ballState.frozenElapsed = (performance.now() - ballState.lastImpactWallMs) / 1000;
+}
+
+export function thawBall() {
+    ballState.lastImpactWallMs = performance.now() - ballState.frozenElapsed * 1000;
 }
 
 export function drawBouncingBall(ctx, video) {
     if (!state.bpm || !ballState.T) return;
+    const elapsed = video.paused
+        ? ballState.frozenElapsed
+        : (performance.now() - ballState.lastImpactWallMs) / 1000;
 
     const { ballArea } = getLayout(video);
     
@@ -71,9 +89,8 @@ export function drawBouncingBall(ctx, video) {
     // travel is the total distance the ball moves vertically
     const travel = floorY - (ballArea.y + RADIUS + 200);
 
-    const elapsed = video.currentTime - ballState.lastImpactTime;
     const normY = (ballState.v0 * elapsed) + (0.5 * ballState.gravity * elapsed * elapsed);
-    const drawY = floorY + normY * travel;
+    const drawY = Math.min(floorY - RADIUS, floorY + normY * travel);
 
     const wall = performance.now() / 1000;
     const dt = ballState.wallLastFrame > 0 ? Math.min(wall - ballState.wallLastFrame, 0.1) : 1/60;
