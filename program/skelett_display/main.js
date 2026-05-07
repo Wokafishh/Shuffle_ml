@@ -2,18 +2,45 @@
 
 import { state } from './state.js';
 import { drawFrame } from './skeleton.js';
-import { ballState, initBall, checkBounce, syncBallToTime, drawBouncingBall, freezeBall, thawBall  } from './ball.js';
+import { ballState, initBall, checkBounce, syncBallToTime, drawBouncingBall, freezeBall, thawBall } from './ball.js';
 import { drawTimeline, updatePlayhead, initTimelineClick } from './timeline.js';
 import { loadVariables } from './variables.js';
+import { exportData } from './export.js';
 
 // ── DOM ───────────────────────────────────────────────────────
-const video   = document.getElementById('video');
-const overlay = document.getElementById('overlay');
-const ctx     = overlay.getContext('2d');
+const video    = document.getElementById('video');
+const overlay  = document.getElementById('overlay');
+const ctx      = overlay.getContext('2d');
 const beatList = document.getElementById('beat-list');
+
+// ── Expose globals for inline handlers ────────────────────────
+window.state      = state;
+window.exportData = exportData;
 
 // ── Keep-alive ────────────────────────────────────────────────
 setInterval(() => fetch('/ping').catch(() => {}), 2000);
+
+// ── Volume ────────────────────────────────────────────────────
+const VOL_KEY = 'motionviewer_volume';
+
+window.setVolume = function(v) {
+    const vol = Number(v);
+    video.volume = vol / 100;
+    document.getElementById('vol-label').textContent = vol + '%';
+    localStorage.setItem(VOL_KEY, vol);
+};
+
+function initVolume() {
+    const saved = localStorage.getItem(VOL_KEY);
+    const v     = saved !== null ? Number(saved) : 50;
+
+    document.getElementById('vol-slider').value = v;
+    document.getElementById('vol-label').textContent = v + '%';
+
+    const apply = () => { video.volume = v / 100; };
+    if (video.readyState >= 1) apply();
+    else video.addEventListener('loadedmetadata', apply, { once: true });
+}
 
 // ── Tab switching ─────────────────────────────────────────────
 window.switchTab = function(name) {
@@ -26,11 +53,11 @@ window.switchTab = function(name) {
 
 // ── Data loading ──────────────────────────────────────────────
 function loadBeats(d) {
-    state.beats     = d.beats || [];
-    state.melodic   = d.melodic_changes || [];
-    state.duration  = d.duration_s || 0;
-    state.bpm       = d.bpm || 120;
-    state.drops     = d.drops || [];           
+    state.beats         = da.beats || [];
+    state.melodic       = d.melodic_changes || [];
+    state.duration      = d.duration_s || 0;
+    state.bpm           = d.bpm || 120;
+    state.drops         = d.drops || [];
     state.firstBeatTime = state.beats[0]?.time_s ?? 0;
     state.nextBounceIdx = 0;
 
@@ -149,6 +176,8 @@ window.addEventListener('resize', () => drawTimeline(video));
 
 // ── Boot ──────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+    initVolume();
+
     const p    = new URLSearchParams(location.search);
     const name = p.get('name');
     if (!name) { document.getElementById('info').textContent = 'No name param'; return; }

@@ -1,19 +1,5 @@
 """
-──────────────────
-Multi-person skelett-extraktion för dansvideor.
-Sparar bara relevanta landmärken: huvud, axlar, armar, händer, höfter, ben, fötter.
-
-Två lager av filtrering:
-  1. Anatomisk validering per frame  – helkroppsposen måste vara rimlig
-  2. Temporal hastighetsbegränsning  – enskilda punkter som teleporterar
-     rensas bort (sätts till v=0) utan att kassera hela personen
-
-Anropas från handler:
-    from mocap_mediapipe import analysera_skelett
-    analysera_skelett(video_path, output_dir)
-
-Beroenden:
-    pip install mediapipe opencv-python-headless rich
+Pose analys
 """
 
 import json
